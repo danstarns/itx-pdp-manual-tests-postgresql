@@ -6,37 +6,17 @@ on:
       - main
 
 jobs:
-  install:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: 18
-      - run: npm i
-
-  migrate-deploy:
-    needs: install
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: 18
-      - run: DATABASE_URL=$MIGRATE_DATABASE_URL npm run migrate-deploy
-        env:
-          MIGRATE_DATABASE_URL: ${{secrets.MIGRATE_DATABASE_URL}}
-
   test:
-    needs: migrate-deploy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
         with:
           node-version: 18
-          registry-url: https://registry.npmjs.org/
+      - run: npm install
+      - run: DATABASE_URL=$MIGRATE_DATABASE_URL npm run migrate-deploy
       - run: npm run generate-client
       - run: npm run test
         env:
+          MIGRATE_DATABASE_URL: ${{secrets.MIGRATE_DATABASE_URL}}
           DATABASE_URL: ${{secrets.DATABASE_URL}}
