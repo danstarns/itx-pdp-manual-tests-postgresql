@@ -5,9 +5,29 @@ const pkg = require("./package.json") as Record<string, any>;
 const prisma = new PrismaClient();
 const sleep = util.promisify(setTimeout);
 
-describe("itx-pdp-errors", () => {
+describe("itx-pdp", () => {
   beforeEach(async () => {
     await prisma.user.deleteMany();
+  });
+
+  test("basic", async () => {
+    const result = await prisma.$transaction(async (prisma) => {
+      await prisma.user.create({
+        data: {
+          email: "user_1@website.com",
+        },
+      });
+
+      await prisma.user.create({
+        data: {
+          email: "user_2@website.com",
+        },
+      });
+
+      return prisma.user.findMany();
+    });
+
+    expect(result.length).toBe(2);
   });
 
   test("timeout default", async () => {
@@ -92,6 +112,51 @@ describe("itx-pdp-errors", () => {
     expect(users.length).toBe(0);
   });
 
+  test("postgresql: nested create", async () => {
+    const result = prisma.$transaction(async (tx) => {
+      await tx.user.create({
+        data: {
+          email: "user_1@website.com",
+        },
+      });
+
+      await prisma.$transaction(async (tx) => {
+        await tx.user.create({
+          data: {
+            email: "user_2@website.com",
+          },
+        });
+      });
+
+      return tx.user.findMany();
+    });
+
+    await expect(result).resolves.toHaveLength(2);
+  });
+
+  /**
+   * We don't allow certain methods to be called in a transaction
+   */
+  test("forbidden", async () => {
+    const forbidden = [
+      "$connect",
+      "$disconnect",
+      "$on",
+      "$transaction",
+      "$use",
+    ];
+    expect.assertions(forbidden.length + 1);
+
+    const result = prisma.$transaction((prisma) => {
+      for (const method of forbidden) {
+        expect(prisma).not.toHaveProperty(method);
+      }
+      return Promise.resolve();
+    });
+
+    await expect(result).resolves.toBe(undefined);
+  });
+
   test("rollback query", async () => {
     const result = prisma.$transaction(async (prisma) => {
       await prisma.user.create({
@@ -146,6 +211,289 @@ describe("itx-pdp-errors", () => {
     const users = await prisma.user.findMany();
 
     expect(users.length).toBe(0);
+  });
+
+  test("batching", async () => {
+    await prisma.$transaction([
+      prisma.user.create({
+        data: {
+          email: "user_1@website.com",
+        },
+      }),
+      prisma.user.create({
+        data: {
+          email: "user_2@website.com",
+        },
+      }),
+    ]);
+
+    const users = await prisma.user.findMany();
+
+    expect(users.length).toBe(2);
+  });
+
+  test("batching rollback", async () => {
+    const result = prisma.$transaction([
+      prisma.user.create({
+        data: {
+          email: "user_1@website.com",
+        },
+      }),
+      prisma.user.create({
+        data: {
+          email: "user_1@website.com",
+        },
+      }),
+    ]);
+
+    await expect(result).rejects.toMatchInlineSnapshot(`
+[Error: 
+Invalid \`prisma.user.create()\` invocation in
+/Users/danielstarns/code/clones/itx-pdp-manual-tests/index.test.ts:237:19
+
+  234 
+  235 test("batching rollback", async () => {
+  236   const result = prisma.$transaction([
+→ 237     prisma.user.create(
+Unique constraint failed on the fields: (\`email\`)]
+`);
+
+    const users = await prisma.user.findMany();
+
+    expect(users.length).toBe(0);
+  });
+
+  /**
+   * A bad batch should rollback using the interactive transaction logic
+   * // TODO: skipped because output differs from binary to library
+   */
+  test("batching raw rollback", async () => {
+    await prisma.user.create({
+      data: {
+        id: "1",
+        email: "user_1@website.com",
+      },
+    });
+
+    // const result =
+    //   provider === "mysql"
+    //     ? prisma.$transaction([
+    //         // @ts-test-if: provider !== 'mongodb'
+    //         prisma.$executeRaw`INSERT INTO User (id, email) VALUES (${"2"}, ${"user_2@website.com"})`,
+    //         // @ts-test-if: provider !== 'mongodb'
+    //         prisma.$queryRaw`DELETE FROM User`,
+    //         // @ts-test-if: provider !== 'mongodb'
+    //         prisma.$executeRaw`INSERT INTO User (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
+    //         // @ts-test-if: provider !== 'mongodb'
+    //         prisma.$executeRaw`INSERT INTO User (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
+    //       ])
+    //     : prisma.$transaction([
+    //         // @ts-test-if: provider !== 'mongodb'
+    //         prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"2"}, ${"user_2@website.com"})`,
+    //         // @ts-test-if: provider !== 'mongodb'
+    //         prisma.$queryRaw`DELETE FROM "User"`,
+    //         // @ts-test-if: provider !== 'mongodb'
+    //         prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
+    //         // @ts-test-if: provider !== 'mongodb'
+    //         prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
+    //       ]);
+
+    const result = prisma.$transaction([
+      // @ts-test-if: provider !== 'mongodb'
+      prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"2"}, ${"user_2@website.com"})`,
+      // @ts-test-if: provider !== 'mongodb'
+      prisma.$queryRaw`DELETE FROM "User"`,
+      // @ts-test-if: provider !== 'mongodb'
+      prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
+      // @ts-test-if: provider !== 'mongodb'
+      prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
+    ]);
+
+    await expect(result).rejects.toMatchInlineSnapshot(`
+[Error: 
+Invalid \`prisma.$executeRaw()\` invocation:
+
+
+Raw query failed. Code: \`23505\`. Message: \`Key (id)=(1) already exists.\`]
+`);
+
+    const users = await prisma.user.findMany();
+
+    expect(users.length).toBe(1);
+  });
+
+  describe("middlewares", () => {
+    test("middleware basic", async () => {
+      const isolatedPrisma = new PrismaClient();
+      let runInTransaction = false;
+
+      isolatedPrisma.$use(async (params, next) => {
+        await next(params);
+
+        runInTransaction = params.runInTransaction;
+
+        return "result";
+      });
+
+      const result = await isolatedPrisma.$transaction((prisma) => {
+        return prisma.user.create({
+          data: {
+            email: "user_1@website.com",
+          },
+        });
+      });
+
+      expect(result).toBe("result");
+      expect(runInTransaction).toBe(true);
+    });
+
+    /**
+     * Middlewares should work normally on batches
+     */
+    test("middlewares batching", async () => {
+      const isolatedPrisma = new PrismaClient();
+      isolatedPrisma.$use(async (params, next) => {
+        const result = await next(params);
+
+        return result;
+      });
+
+      await isolatedPrisma.$transaction([
+        prisma.user.create({
+          data: {
+            email: "user_1@website.com",
+          },
+        }),
+        prisma.user.create({
+          data: {
+            email: "user_2@website.com",
+          },
+        }),
+      ]);
+
+      const users = await prisma.user.findMany();
+
+      expect(users.length).toBe(2);
+    });
+
+    test("middleware exclude from transaction", async () => {
+      const isolatedPrisma = new PrismaClient();
+
+      isolatedPrisma.$use((params, next) => {
+        return next({ ...params, runInTransaction: false });
+      });
+
+      await isolatedPrisma
+        .$transaction(async (prisma) => {
+          await prisma.user.create({
+            data: {
+              email: "user_1@website.com",
+            },
+          });
+
+          await prisma.user.create({
+            data: {
+              email: "user_1@website.com",
+            },
+          });
+        })
+        .catch((e) => {});
+
+      const users = await isolatedPrisma.user.findMany();
+      expect(users).toHaveLength(1);
+    });
+  });
+
+  /**
+   * Two concurrent transactions should work
+   */
+  test("concurrent", async () => {
+    await Promise.all([
+      prisma.$transaction([
+        prisma.user.create({
+          data: {
+            email: "user_1@website.com",
+          },
+        }),
+      ]),
+      prisma.$transaction([
+        prisma.user.create({
+          data: {
+            email: "user_2@website.com",
+          },
+        }),
+      ]),
+    ]);
+
+    const users = await prisma.user.findMany();
+
+    expect(users.length).toBe(2);
+  });
+
+  test("high concurrency", async () => {
+    jest.setTimeout(30_000);
+
+    await prisma.user.create({
+      data: {
+        email: "x",
+        name: "y",
+      },
+    });
+
+    for (let i = 0; i < 5; i++) {
+      await Promise.allSettled([
+        prisma.$transaction(
+          (tx) =>
+            tx.user.update({ data: { name: "a" }, where: { email: "x" } }),
+          { timeout: 25 }
+        ),
+        prisma.$transaction(
+          (tx) =>
+            tx.user.update({ data: { name: "b" }, where: { email: "x" } }),
+          { timeout: 25 }
+        ),
+        prisma.$transaction(
+          (tx) =>
+            tx.user.update({ data: { name: "c" }, where: { email: "x" } }),
+          { timeout: 25 }
+        ),
+        prisma.$transaction(
+          (tx) =>
+            tx.user.update({ data: { name: "d" }, where: { email: "x" } }),
+          { timeout: 25 }
+        ),
+        prisma.$transaction(
+          (tx) =>
+            tx.user.update({ data: { name: "e" }, where: { email: "x" } }),
+          { timeout: 25 }
+        ),
+        prisma.$transaction(
+          (tx) =>
+            tx.user.update({ data: { name: "f" }, where: { email: "x" } }),
+          { timeout: 25 }
+        ),
+        prisma.$transaction(
+          (tx) =>
+            tx.user.update({ data: { name: "g" }, where: { email: "x" } }),
+          { timeout: 25 }
+        ),
+        prisma.$transaction(
+          (tx) =>
+            tx.user.update({ data: { name: "h" }, where: { email: "x" } }),
+          { timeout: 25 }
+        ),
+        prisma.$transaction(
+          (tx) =>
+            tx.user.update({ data: { name: "i" }, where: { email: "x" } }),
+          { timeout: 25 }
+        ),
+        prisma.$transaction(
+          (tx) =>
+            tx.user.update({ data: { name: "j" }, where: { email: "x" } }),
+          { timeout: 25 }
+        ),
+      ]).catch(() => {}); // we don't care for errors, there will be
+    }
   });
 
   test("rollback with then calls", async () => {
