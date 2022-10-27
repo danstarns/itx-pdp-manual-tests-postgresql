@@ -246,17 +246,9 @@ describe("itx-pdp", () => {
       }),
     ]);
 
-    await expect(result).rejects.toMatchInlineSnapshot(`
-[Error: 
-Invalid \`prisma.user.create()\` invocation in
-/Users/danielstarns/code/clones/itx-pdp-manual-tests/index.test.ts:237:19
-
-  234 
-  235 test("batching rollback", async () => {
-  236   const result = prisma.$transaction([
-→ 237     prisma.user.create(
-Unique constraint failed on the fields: (\`email\`)]
-`);
+    await expect(result).rejects.toThrowError(
+      `Unique constraint failed on the fields`
+    );
 
     const users = await prisma.user.findMany();
 
@@ -309,13 +301,9 @@ Unique constraint failed on the fields: (\`email\`)]
       prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
     ]);
 
-    await expect(result).rejects.toMatchInlineSnapshot(`
-[Error: 
-Invalid \`prisma.$executeRaw()\` invocation:
-
-
-Raw query failed. Code: \`23505\`. Message: \`Key (id)=(1) already exists.\`]
-`);
+    await expect(result).rejects.toThrowError(
+      `Raw query failed. Code: \`23505\``
+    );
 
     const users = await prisma.user.findMany();
 
