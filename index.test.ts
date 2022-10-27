@@ -246,7 +246,7 @@ describe("itx-pdp", () => {
       }),
     ]);
 
-    await expect(result).rejects.toThrowError(
+    await expect(result).rejects.toThrow(
       `Unique constraint failed on the fields`
     );
 
@@ -301,9 +301,7 @@ describe("itx-pdp", () => {
       prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
     ]);
 
-    await expect(result).rejects.toThrowError(
-      `Raw query failed. Code: \`23505\``
-    );
+    await expect(result).rejects.toThrow(`Raw query failed. Code: \`23505\``);
 
     const users = await prisma.user.findMany();
 
