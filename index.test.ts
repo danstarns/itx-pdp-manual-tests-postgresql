@@ -267,37 +267,10 @@ describe("itx-pdp", () => {
       },
     });
 
-    // const result =
-    //   provider === "mysql"
-    //     ? prisma.$transaction([
-    //         // @ts-test-if: provider !== 'mongodb'
-    //         prisma.$executeRaw`INSERT INTO User (id, email) VALUES (${"2"}, ${"user_2@website.com"})`,
-    //         // @ts-test-if: provider !== 'mongodb'
-    //         prisma.$queryRaw`DELETE FROM User`,
-    //         // @ts-test-if: provider !== 'mongodb'
-    //         prisma.$executeRaw`INSERT INTO User (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
-    //         // @ts-test-if: provider !== 'mongodb'
-    //         prisma.$executeRaw`INSERT INTO User (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
-    //       ])
-    //     : prisma.$transaction([
-    //         // @ts-test-if: provider !== 'mongodb'
-    //         prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"2"}, ${"user_2@website.com"})`,
-    //         // @ts-test-if: provider !== 'mongodb'
-    //         prisma.$queryRaw`DELETE FROM "User"`,
-    //         // @ts-test-if: provider !== 'mongodb'
-    //         prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
-    //         // @ts-test-if: provider !== 'mongodb'
-    //         prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
-    //       ]);
-
     const result = prisma.$transaction([
-      // @ts-test-if: provider !== 'mongodb'
       prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"2"}, ${"user_2@website.com"})`,
-      // @ts-test-if: provider !== 'mongodb'
       prisma.$queryRaw`DELETE FROM "User"`,
-      // @ts-test-if: provider !== 'mongodb'
       prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
-      // @ts-test-if: provider !== 'mongodb'
       prisma.$executeRaw`INSERT INTO "User" (id, email) VALUES (${"1"}, ${"user_1@website.com"})`,
     ]);
 
